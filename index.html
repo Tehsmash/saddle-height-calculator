@@ -414,6 +414,7 @@ const BIKE_DEFS = [
   { key:'saddle_height',   label:'Saddle Height',   unit:'mm', min:400,  max:850,  step:5,   def:680   },
   { key:'crank_length',    label:'Crank Length',    unit:'mm', min:155,  max:185,  step:2.5, def:172.5 },
   { key:'seat_tube_angle', label:'Seat Tube Angle', unit:'°',  min:68,   max:80,   step:0.5, def:73    },
+  { key:'saddle_offset',   label:'Saddle Fore/Aft', unit:'mm', min:-100, max:100,  step:5,   def:0     },
 ];
 const BODY_DEFS = [
   { key:'upper_leg',       label:'Femur (hip–knee)',       unit:'mm', min:300, max:600, step:5,  def:420 },
@@ -565,9 +566,17 @@ function toggleLock() {
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // ── Geometry ───────────────────────────────────────────────────────────────
-function hipPos() {
+function seatTubeTop() {
   const a = toRad(params.seat_tube_angle);
-  return { x: -params.saddle_height * Math.cos(a), y: params.saddle_height * Math.sin(a) };
+  return {
+    x: -params.saddle_height * Math.cos(a),
+    y:  params.saddle_height * Math.sin(a)
+  };
+}
+
+function hipPos() {
+  const top = seatTubeTop();
+  return { x: top.x + params.saddle_offset, y: top.y };
 }
 
 // Geometry is always computed in right-side-view convention.
@@ -653,8 +662,11 @@ function resizeCanvas(canvas) {
 }
 
 function computeGeomBounds(side) {
-  const hip = hipPos();
-  const pts = [hip, {x:0,y:0}];
+  const hip   = hipPos();
+  const sttop = seatTubeTop();
+  const pts   = [hip, sttop, {x:0,y:0},
+    { x: sttop.x - 30, y: sttop.y },  // saddle rail extents
+    { x: sttop.x + 30 + params.saddle_offset, y: sttop.y }];
   const aa  = toRad(params[`ankle_angle_${side}`]);
   const cfh = params[`cleat_from_heel_${side}`];
   const rem = params[`foot_length_${side}`] - cfh;
@@ -690,6 +702,7 @@ function renderSide(canvas, side, crankAngle) {
   const ws = p => ({ x: ox + p.x * sc, y: oy - p.y * sc });
   const lw = px => px / sc;
 
+  const sttop = seatTubeTop();
   const hip   = hipPos();
   const pedal = pedalPos(side === 'L' ? crankAngle + 180 : crankAngle);
   const ankle = anklePos(pedal, side);
@@ -709,9 +722,20 @@ function renderSide(canvas, side, crankAngle) {
   ctx.beginPath(); ctx.arc(0,0,params.crank_length,0,2*Math.PI);
   ctx.setLineDash([5/sc,4/sc]); ctx.strokeStyle=getCssVar('--crank'); ctx.lineWidth=lw(1); ctx.stroke(); ctx.setLineDash([]);
 
-  // Seat tube
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(hip.x,hip.y);
+  // Seat tube (fixed — BB to seat tube top, unaffected by fore/aft offset)
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(sttop.x,sttop.y);
   ctx.strokeStyle=getCssVar('--border'); ctx.lineWidth=lw(2); ctx.stroke();
+
+  // Seat post extension to saddle position (thin line from tube top to hip)
+  if (params.saddle_offset !== 0) {
+    ctx.beginPath(); ctx.moveTo(sttop.x,sttop.y); ctx.lineTo(hip.x,hip.y);
+    ctx.setLineDash([4/sc,3/sc]); ctx.strokeStyle=getCssVar('--border'); ctx.lineWidth=lw(1.5); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Saddle rail (horizontal bar centred on hip position)
+  const saddleW = 60;
+  ctx.beginPath(); ctx.moveTo(hip.x - saddleW/2, hip.y); ctx.lineTo(hip.x + saddleW/2, hip.y);
+  ctx.strokeStyle=getCssVar('--text2'); ctx.lineWidth=lw(5); ctx.lineCap='round'; ctx.stroke();
 
   // Crank arm
   ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(pedal.x,pedal.y);
