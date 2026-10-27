@@ -89,6 +89,45 @@ main {
   cursor: pointer;
 }
 .tool-btn:hover { background: var(--border); }
+#profile-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+#profile-bar .profile-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+}
+#profile-bar .profile-row.load-row {
+  grid-template-columns: 1fr auto;
+}
+#profile-bar select,
+#profile-bar input[type="text"] {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  width: 100%;
+  min-width: 0;
+}
+#profile-bar .pbtn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.78rem;
+  padding: 4px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#profile-bar .pbtn:hover { background: var(--border); }
+#profile-bar .pbtn.danger { color: var(--warn); border-color: var(--warn); }
+#profile-bar .pbtn.danger:hover { background: color-mix(in srgb, var(--warn) 12%, var(--surface2)); }
 .input-section { display: flex; flex-direction: column; gap: 10px; }
 .input-section h2 {
   font-size: 0.7rem;
@@ -878,6 +917,78 @@ scrubber.addEventListener('input', () => {
   renderDiagrams(); updateMetrics(); chart.update('none');
 });
 
+// ── localStorage Profiles ─────────────────────────────────────────────────
+function getAllProfiles() {
+  try { return JSON.parse(localStorage.getItem('saddleProfiles') || '{}'); }
+  catch { return {}; }
+}
+
+function refreshProfileSelect(selectName) {
+  const sel = document.getElementById('profile-select');
+  if (!sel) return;
+  const names = Object.keys(getAllProfiles());
+  sel.innerHTML = names.length
+    ? names.map(n => `<option value="${n}"${n===selectName?' selected':''}>${n}</option>`).join('')
+    : '<option value="" disabled selected>No saved profiles</option>';
+}
+
+function saveProfile(name) {
+  if (!name) { alert('Enter a profile name first.'); return; }
+  const profiles = getAllProfiles();
+  profiles[name] = { ...params };
+  localStorage.setItem('saddleProfiles', JSON.stringify(profiles));
+  localStorage.setItem('saddleLastProfile', name);
+  refreshProfileSelect(name);
+}
+
+function loadProfile(name) {
+  const profiles = getAllProfiles();
+  if (!profiles[name]) return;
+  applyLoadedParams(profiles[name]);
+  localStorage.setItem('saddleLastProfile', name);
+  document.getElementById('profile-name').value = name;
+}
+
+function deleteProfile(name) {
+  if (!name) return;
+  if (!confirm(`Delete profile "${name}"?`)) return;
+  const profiles = getAllProfiles();
+  delete profiles[name];
+  localStorage.setItem('saddleProfiles', JSON.stringify(profiles));
+  if (localStorage.getItem('saddleLastProfile') === name)
+    localStorage.removeItem('saddleLastProfile');
+  refreshProfileSelect('');
+  document.getElementById('profile-name').value = '';
+}
+
+function buildProfileBar() {
+  const bar = document.createElement('div');
+  bar.id = 'profile-bar';
+  bar.innerHTML = `
+    <div class="profile-row load-row">
+      <select id="profile-select"><option value="" disabled selected>No saved profiles</option></select>
+      <button class="pbtn" id="pbtn-load">Load</button>
+    </div>
+    <div class="profile-row">
+      <input type="text" id="profile-name" placeholder="Profile name…">
+      <button class="pbtn" id="pbtn-save">Save</button>
+      <button class="pbtn danger" id="pbtn-delete">Delete</button>
+    </div>`;
+  const panel = document.getElementById('inputs-panel');
+  const toolbar = document.getElementById('panel-toolbar');
+  panel.insertBefore(bar, toolbar.nextSibling);
+
+  const nameInput = document.getElementById('profile-name');
+  const sel       = document.getElementById('profile-select');
+
+  document.getElementById('pbtn-save').addEventListener('click', () => saveProfile(nameInput.value.trim()));
+  document.getElementById('pbtn-load').addEventListener('click', () => loadProfile(sel.value));
+  document.getElementById('pbtn-delete').addEventListener('click', () => deleteProfile(sel.value));
+  sel.addEventListener('change', () => { nameInput.value = sel.value; });
+
+  refreshProfileSelect('');
+}
+
 // ── Save / Load ────────────────────────────────────────────────────────────
 function saveParams() {
   const blob = new Blob([JSON.stringify(params, null, 2)], {type:'application/json'});
@@ -917,6 +1028,12 @@ function loadParams(file) {
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   buildInputPanel();
+  buildProfileBar();
+  refreshProfileSelect('');
+
+  // Auto-restore last profile
+  const _last = localStorage.getItem('saddleLastProfile');
+  if (_last && getAllProfiles()[_last]) loadProfile(_last);
 
   document.getElementById('btn-save').addEventListener('click', saveParams);
   const fi = document.getElementById('file-input');
