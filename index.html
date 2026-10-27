@@ -1,0 +1,854 @@
+<!doctype html>
+<title>Bike Saddle Height Calculator</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #f4f4f6;
+  --surface: #ffffff;
+  --surface2: #f0f0f2;
+  --border: #d0d0d8;
+  --text: #1a1a2e;
+  --text2: #555566;
+  --accent: #e06028;
+  --femur: #3b72d4;
+  --tibia: #28a870;
+  --crank: #888899;
+  --target-fill: rgba(40,168,112,0.15);
+  --over-fill: rgba(200,40,40,0.10);
+  --grid: #e0e0e8;
+  --warn: #c02020;
+  --good: #1e8c50;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2a;
+    --surface2: #232638;
+    --border: #363a52;
+    --text: #e8e8f0;
+    --text2: #8888aa;
+    --accent: #fb923c;
+    --femur: #60a5fa;
+    --tibia: #34d399;
+    --crank: #9999bb;
+    --target-fill: rgba(52,211,153,0.12);
+    --over-fill: rgba(248,113,113,0.12);
+    --grid: #2a2e42;
+    --warn: #f87171;
+    --good: #34d399;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, sans-serif;
+  padding: env(safe-area-inset-top,0px) env(safe-area-inset-right,0px)
+           env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
+}
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+}
+header h1 { font-size: 1.1rem; font-weight: 700; }
+header p  { font-size: 0.8rem; color: var(--text2); margin-top: 2px; }
+
+main {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 16px;
+  padding: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+/* ── Inputs ── */
+#inputs-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#inputs-panel h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin-bottom: 4px; }
+.input-group label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.input-group label em { font-style: normal; color: var(--text2); font-weight: 400; }
+.dual-input {
+  display: grid;
+  grid-template-columns: 1fr 64px;
+  gap: 8px;
+  align-items: center;
+}
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+input[type="number"] {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 3px 6px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { opacity: 0.4; }
+
+/* ── Output panel ── */
+#output-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diagram-wrapper {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+#diagram-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4/3;
+  max-height: 380px;
+}
+
+/* ── Controls ── */
+#controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+}
+#btn-play {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#btn-play:hover { filter: brightness(1.1); }
+#scrubber { flex: 1; accent-color: var(--accent); }
+#crank-label {
+  font-size: 0.78rem;
+  color: var(--text2);
+  min-width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Metrics ── */
+#metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.metric .mlabel { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); margin-bottom: 4px; }
+.metric .mval   { font-size: 1.3rem; font-weight: 700; line-height: 1; }
+.metric .munit  { font-size: 0.75rem; color: var(--text2); }
+.metric.good .mval  { color: var(--good); }
+.metric.warn-hi .mval { color: var(--warn); }
+
+#warn-banner {
+  background: color-mix(in srgb, var(--warn) 15%, var(--surface));
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--warn);
+  display: none;
+}
+#warn-banner.visible { display: block; }
+
+/* ── Chart ── */
+.chart-wrapper {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  height: 260px;
+}
+#chart-canvas { width: 100% !important; height: 100% !important; }
+
+/* ── Responsive ── */
+@media (max-width: 780px) {
+  main { grid-template-columns: 1fr; }
+  #metrics-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+
+<header>
+  <h1>Bike Saddle Height Calculator</h1>
+  <p>Internal knee angle through the full crank rotation</p>
+</header>
+
+<main>
+  <aside id="inputs-panel">
+    <h2>Parameters</h2>
+  </aside>
+
+  <section id="output-panel">
+    <div class="diagram-wrapper">
+      <canvas id="diagram-canvas"></canvas>
+      <div id="controls-row">
+        <button id="btn-play">&#9654; Play</button>
+        <input type="range" id="scrubber" min="0" max="359" step="1" value="180">
+        <span id="crank-label">180°</span>
+      </div>
+    </div>
+
+    <div id="metrics-row">
+      <div class="metric" id="m-current">
+        <span class="mlabel">Current</span>
+        <span class="mval">—</span><span class="munit">°</span>
+      </div>
+      <div class="metric" id="m-bdc">
+        <span class="mlabel">At BDC</span>
+        <span class="mval">—</span><span class="munit">°</span>
+      </div>
+      <div class="metric" id="m-min">
+        <span class="mlabel">Min (most ext.)</span>
+        <span class="mval">—</span><span class="munit">°</span>
+      </div>
+      <div class="metric" id="m-max">
+        <span class="mlabel">Max (most bent)</span>
+        <span class="mval">—</span><span class="munit">°</span>
+      </div>
+    </div>
+
+    <div id="warn-banner"></div>
+
+    <div class="chart-wrapper">
+      <canvas id="chart-canvas"></canvas>
+    </div>
+  </section>
+</main>
+
+<script>
+// ── Parameter definitions ──────────────────────────────────────────────────
+const INPUT_DEFS = [
+  { key:'saddle_height',   label:'Saddle Height',          unit:'mm', min:400,  max:850,  step:5,   def:680   },
+  { key:'crank_length',    label:'Crank Length',           unit:'mm', min:155,  max:185,  step:2.5, def:172.5 },
+  { key:'upper_leg',       label:'Femur (hip–knee)',       unit:'mm', min:300,  max:600,  step:5,   def:420   },
+  { key:'lower_leg',       label:'Tibia (knee–ankle)',     unit:'mm', min:280,  max:550,  step:5,   def:410   },
+  { key:'seat_tube_angle', label:'Seat Tube Angle',        unit:'°',  min:68,   max:80,   step:0.5, def:73    },
+  { key:'foot_length',     label:'Foot Length',            unit:'mm', min:200,  max:320,  step:5,   def:265   },
+  { key:'cleat_from_heel', label:'Cleat from Heel',        unit:'mm', min:140,  max:260,  step:5,   def:190   },
+  { key:'ankle_angle',     label:'Ankle Angle (plantar+)', unit:'°',  min:-20,  max:30,   step:1,   def:10    },
+];
+
+const params = {};
+INPUT_DEFS.forEach(d => { params[d.key] = d.def; });
+
+// ── Build input panel ──────────────────────────────────────────────────────
+function buildInputPanel() {
+  const panel = document.getElementById('inputs-panel');
+  INPUT_DEFS.forEach(d => {
+    const grp = document.createElement('div');
+    grp.className = 'input-group';
+    grp.innerHTML = `
+      <label for="num-${d.key}">${d.label} <em>${d.unit}</em></label>
+      <div class="dual-input">
+        <input type="range"  id="rng-${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.def}">
+        <input type="number" id="num-${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.def}">
+      </div>`;
+    panel.appendChild(grp);
+
+    const rng = document.getElementById(`rng-${d.key}`);
+    const num = document.getElementById(`num-${d.key}`);
+    rng.addEventListener('input', () => {
+      const v = parseFloat(rng.value);
+      num.value = v;
+      params[d.key] = v;
+      recompute();
+    });
+    num.addEventListener('change', () => {
+      const v = Math.min(d.max, Math.max(d.min, parseFloat(num.value) || d.def));
+      num.value = v;
+      rng.value = v;
+      params[d.key] = v;
+      recompute();
+    });
+  });
+}
+
+// ── Geometry ───────────────────────────────────────────────────────────────
+const toRad = deg => deg * Math.PI / 180;
+const toDeg = rad => rad * 180 / Math.PI;
+const dist = (a, b) => Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
+
+function hipPos() {
+  const a = toRad(params.seat_tube_angle);
+  return {
+    x: -params.saddle_height * Math.cos(a),
+    y:  params.saddle_height * Math.sin(a)
+  };
+}
+
+function pedalPos(theta) {
+  const a = toRad(theta);
+  return {
+    x: -params.crank_length * Math.sin(a),
+    y: -params.crank_length * Math.cos(a)
+  };
+}
+
+function anklePos(pedal) {
+  const ankleFromHeel = 0.22 * params.foot_length;
+  const D = params.cleat_from_heel - ankleFromHeel;
+  const aa = toRad(params.ankle_angle);
+  return {
+    x: pedal.x - D * Math.cos(aa),
+    y: pedal.y + D * Math.sin(aa)
+  };
+}
+
+// Returns { valid, internalAngle, knee, reason }
+function computeKnee(hip, ankle) {
+  const U = params.upper_leg;
+  const L = params.lower_leg;
+  const d = dist(hip, ankle);
+
+  if (d > U + L) return { valid: false, reason: 'overstretched', d };
+  if (d < Math.abs(U - L)) return { valid: false, reason: 'compressed', d };
+
+  const cosK = Math.max(-1, Math.min(1, (U*U + L*L - d*d) / (2*U*L)));
+  const internalAngle = toDeg(Math.acos(cosK));
+
+  // Knee position: project along hip-ankle, offset perpendicularly
+  const dx = ankle.x - hip.x;
+  const dy = ankle.y - hip.y;
+  const ux = dx/d, uy = dy/d;
+  const along = (U*U + d*d - L*L) / (2*d);
+  const h = Math.sqrt(Math.max(0, U*U - along*along));
+  // Perpendicular pointing "forward" (positive X from rider perspective)
+  const knee = {
+    x: hip.x + along*ux - h*uy,
+    y: hip.y + along*uy + h*ux
+  };
+
+  return { valid: true, internalAngle, knee };
+}
+
+function buildCurve() {
+  const hip = hipPos();
+  return Array.from({length: 361}, (_, i) => {
+    const pedal = pedalPos(i);
+    const ankle = anklePos(pedal);
+    const result = computeKnee(hip, ankle);
+    return { angle: i, ...result };
+  });
+}
+
+function extractMetrics(curve) {
+  const valid = curve.filter(p => p.valid);
+  if (!valid.length) return { bdc: null, min: null, max: null };
+  const bdc = curve[180];
+  const minP = valid.reduce((a,b) => a.internalAngle < b.internalAngle ? a : b);
+  const maxP = valid.reduce((a,b) => a.internalAngle > b.internalAngle ? a : b);
+  return {
+    bdc: bdc?.valid ? bdc.internalAngle : null,
+    min: minP.internalAngle,
+    max: maxP.internalAngle,
+    minAngle: minP.angle,
+    anyOverextended: valid.some(p => p.internalAngle > 148),
+    anyInvalid: curve.some(p => !p.valid)
+  };
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  crankAngle: 180,
+  isPlaying: false,
+  lastTimestamp: null,
+  animId: null,
+  speedDeg: 360,
+  curveData: [],
+  metrics: {}
+};
+
+// ── Diagram canvas ─────────────────────────────────────────────────────────
+const diagCanvas = document.getElementById('diagram-canvas');
+const diagCtx = diagCanvas.getContext('2d');
+
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function resizeDiagCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = diagCanvas.getBoundingClientRect();
+  diagCanvas.width  = rect.width  * dpr;
+  diagCanvas.height = rect.height * dpr;
+}
+
+// World-to-canvas transform helpers (set dynamically in renderDiagram)
+let _scale, _ox, _oy, _dpr;
+
+function computeGeomBounds() {
+  const hip = hipPos();
+  const pts = [hip, {x:0, y:0}];
+  const aa = toRad(params.ankle_angle);
+  const remain = params.foot_length - params.cleat_from_heel;
+  for (let theta = 0; theta < 360; theta += 10) {
+    const p = pedalPos(theta);
+    pts.push(p, anklePos(p));
+    pts.push({x: p.x - params.cleat_from_heel * Math.cos(aa), y: p.y + params.cleat_from_heel * Math.sin(aa)});
+    pts.push({x: p.x + remain * Math.cos(aa), y: p.y - remain * Math.sin(aa)});
+  }
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+}
+
+function worldToScreen(p) {
+  return { x: _ox + p.x * _scale, y: _oy - p.y * _scale };
+}
+
+function renderDiagram() {
+  resizeDiagCanvas();
+  const ctx = diagCtx;
+  _dpr = window.devicePixelRatio || 1;
+  const W = diagCanvas.width  / _dpr;
+  const H = diagCanvas.height / _dpr;
+
+  ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  // Compute a scale/origin that fits all geometry with padding
+  const PAD = 32;
+  const b = computeGeomBounds();
+  const geomW = b.maxX - b.minX;
+  const geomH = b.maxY - b.minY;
+  _scale = Math.min((W - PAD*2) / geomW, (H - PAD*2) / geomH);
+  // BB at origin — map world origin to screen
+  const worldCentreX = (b.minX + b.maxX) / 2;
+  const worldCentreY = (b.minY + b.maxY) / 2;
+  _ox = W/2 - worldCentreX * _scale;
+  _oy = H/2 + worldCentreY * _scale;  // +Y because Y-flip
+
+  const hip    = hipPos();
+  const pedal  = pedalPos(state.crankAngle);
+  const ankle  = anklePos(pedal);
+  const result = computeKnee(hip, ankle);
+
+  const remainFoot = params.foot_length - params.cleat_from_heel;
+  const aa = toRad(params.ankle_angle);
+  const heel = {
+    x: pedal.x - params.cleat_from_heel * Math.cos(aa),
+    y: pedal.y + params.cleat_from_heel * Math.sin(aa)
+  };
+  const toe = {
+    x: pedal.x + remainFoot * Math.cos(aa),
+    y: pedal.y - remainFoot * Math.sin(aa)
+  };
+
+  ctx.save();
+  ctx.translate(_ox, _oy);
+  ctx.scale(_scale, -_scale);
+
+  const lw = (px) => px / _scale;
+
+  // Ground line
+  ctx.beginPath();
+  ctx.moveTo(-400, -params.crank_length - 20);
+  ctx.lineTo( 400, -params.crank_length - 20);
+  ctx.setLineDash([6/_scale, 4/_scale]);
+  ctx.strokeStyle = getCssVar('--border');
+  ctx.lineWidth = lw(1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Crank rotation circle (dashed)
+  ctx.beginPath();
+  ctx.arc(0, 0, params.crank_length, 0, 2*Math.PI);
+  ctx.setLineDash([5/_scale, 4/_scale]);
+  ctx.strokeStyle = getCssVar('--crank');
+  ctx.lineWidth = lw(1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Seat tube line
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(hip.x, hip.y);
+  ctx.strokeStyle = getCssVar('--border');
+  ctx.lineWidth = lw(2);
+  ctx.stroke();
+
+  // Crank arm
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(pedal.x, pedal.y);
+  ctx.strokeStyle = getCssVar('--crank');
+  ctx.lineWidth = lw(5);
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Foot (heel to toe)
+  ctx.beginPath();
+  ctx.moveTo(heel.x, heel.y);
+  ctx.lineTo(toe.x, toe.y);
+  ctx.strokeStyle = getCssVar('--text2');
+  ctx.lineWidth = lw(4);
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  if (result.valid) {
+    const knee = result.knee;
+
+    // Tibia (ankle to knee)
+    ctx.beginPath();
+    ctx.moveTo(ankle.x, ankle.y);
+    ctx.lineTo(knee.x, knee.y);
+    ctx.strokeStyle = getCssVar('--tibia');
+    ctx.lineWidth = lw(8);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Femur (knee to hip)
+    ctx.beginPath();
+    ctx.moveTo(knee.x, knee.y);
+    ctx.lineTo(hip.x, hip.y);
+    ctx.strokeStyle = getCssVar('--femur');
+    ctx.lineWidth = lw(8);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Joint circles
+    [[hip,12,getCssVar('--femur')],[knee,10,getCssVar('--accent')],[ankle,8,getCssVar('--tibia')]].forEach(([pt,r,c]) => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, lw(r), 0, 2*Math.PI);
+      ctx.fillStyle = c;
+      ctx.fill();
+    });
+  } else {
+    // Draw limbs red dashed to indicate invalid
+    ctx.setLineDash([8/_scale, 5/_scale]);
+    ctx.strokeStyle = getCssVar('--warn');
+    ctx.lineWidth = lw(6);
+    ctx.beginPath();
+    ctx.moveTo(ankle.x, ankle.y);
+    ctx.lineTo(hip.x, hip.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // BB circle
+  ctx.beginPath();
+  ctx.arc(0, 0, lw(8), 0, 2*Math.PI);
+  ctx.fillStyle = getCssVar('--text');
+  ctx.fill();
+
+  // Pedal circle
+  ctx.beginPath();
+  ctx.arc(pedal.x, pedal.y, lw(6), 0, 2*Math.PI);
+  ctx.fillStyle = getCssVar('--crank');
+  ctx.fill();
+
+  ctx.restore();
+
+  // ── Screen-space overlay: labels ──────────────────────────────────────────
+  ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
+  ctx.font = `bold ${Math.round(12 * _dpr)}px system-ui, sans-serif`;
+  ctx.fillStyle = getCssVar('--text2');
+  ctx.fillText('BB', _ox + 10, _oy - 6);
+
+  if (result.valid) {
+    const knee = result.knee;
+    const ks = worldToScreen(knee);
+    const hs = worldToScreen(hip);
+    const as = worldToScreen(ankle);
+
+    // Angle arc at knee
+    const angleToHip   = Math.atan2(hs.y - ks.y, hs.x - ks.x);
+    const angleToAnkle = Math.atan2(as.y - ks.y, as.x - ks.x);
+    const arcR = 22;
+    ctx.beginPath();
+    ctx.arc(ks.x, ks.y, arcR, angleToHip, angleToAnkle, false);
+    ctx.strokeStyle = getCssVar('--accent');
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Label
+    const midAngle = (angleToHip + angleToAnkle) / 2;
+    const lx = ks.x + (arcR + 16) * Math.cos(midAngle);
+    const ly = ks.y + (arcR + 16) * Math.sin(midAngle);
+    ctx.font = `bold ${Math.round(11 * _dpr)}px system-ui, sans-serif`;
+    ctx.fillStyle = getCssVar('--accent');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(result.internalAngle.toFixed(1) + '°', lx, ly);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+}
+
+// ── Chart ──────────────────────────────────────────────────────────────────
+let chart;
+const currentLinePlugin = {
+  id: 'currentLine',
+  afterDraw(ch) {
+    const x = ch.scales.x.getPixelForValue(state.crankAngle);
+    const ctx = ch.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, ch.scales.y.top);
+    ctx.lineTo(x, ch.scales.y.bottom);
+    ctx.strokeStyle = getCssVar('--accent');
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
+function makeAnnotationDataset(yVal, color, fill) {
+  return {
+    data: Array(361).fill(yVal),
+    borderColor: color,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderDash: [4, 4],
+    pointRadius: 0,
+    fill: fill ? fill : false,
+    tension: 0
+  };
+}
+
+function initChart() {
+  const ctx = document.getElementById('chart-canvas').getContext('2d');
+  const gridColor = getCssVar('--grid');
+  const textColor = getCssVar('--text2');
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: Array.from({length: 361}, (_, i) => i),
+      datasets: [
+        // Target zone boundaries (145–148)
+        {
+          data: Array(361).fill(148),
+          borderColor: 'rgba(40,168,112,0.5)',
+          backgroundColor: getCssVar('--target-fill'),
+          borderWidth: 1,
+          borderDash: [4,4],
+          pointRadius: 0,
+          fill: '+1',
+          tension: 0,
+          label: '148° upper'
+        },
+        {
+          data: Array(361).fill(145),
+          borderColor: 'rgba(40,168,112,0.5)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [4,4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          label: '145° lower'
+        },
+        // Main curve
+        {
+          data: [],
+          borderColor: getCssVar('--femur'),
+          backgroundColor: 'transparent',
+          borderWidth: 2.5,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          label: 'Knee angle'
+        }
+      ]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          title: { display: true, text: 'Crank Angle (°)', color: textColor, font: {size: 11} },
+          ticks: {
+            color: textColor,
+            maxTicksLimit: 8,
+            callback: v => [0,90,180,270,360].includes(+v) ? `${v}°` : ''
+          },
+          grid: { color: gridColor }
+        },
+        y: {
+          title: { display: true, text: 'Internal Knee Angle (°)', color: textColor, font: {size: 11} },
+          min: 80, max: 180,
+          ticks: { color: textColor, stepSize: 20 },
+          grid: { color: gridColor }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => `Crank: ${items[0].label}°`,
+            label: item => item.datasetIndex === 2 ? `Knee: ${parseFloat(item.formattedValue).toFixed(1)}°` : null,
+            filter: item => item.datasetIndex === 2
+          }
+        }
+      }
+    },
+    plugins: [currentLinePlugin]
+  });
+}
+
+function updateChart(curveData) {
+  if (!chart) return;
+  chart.data.datasets[2].data = curveData.map(p => p.valid ? +p.internalAngle.toFixed(2) : null);
+  chart.update('none');
+}
+
+// ── Metrics DOM ────────────────────────────────────────────────────────────
+function setMetric(id, val, classify) {
+  const el = document.getElementById(id);
+  const valEl = el.querySelector('.mval');
+  valEl.textContent = val !== null ? val.toFixed(1) : '—';
+  el.classList.remove('good','warn-hi');
+  if (classify === 'good') el.classList.add('good');
+  if (classify === 'warn') el.classList.add('warn-hi');
+}
+
+function classifyBDC(v) {
+  if (v === null) return '';
+  if (v >= 145 && v <= 148) return 'good';
+  if (v > 148) return 'warn';
+  return '';
+}
+
+function updateMetrics() {
+  const { bdc, min, max } = state.metrics;
+  const currentPoint = state.curveData[Math.round(state.crankAngle)];
+  const current = currentPoint?.valid ? currentPoint.internalAngle : null;
+
+  setMetric('m-current', current, classifyBDC(current));
+  setMetric('m-bdc', bdc, classifyBDC(bdc));
+  setMetric('m-min', min, min !== null && min > 148 ? 'warn' : (min !== null && min >= 145 ? 'good' : ''));
+  setMetric('m-max', max, '');
+
+  const warn = document.getElementById('warn-banner');
+  const warnings = [];
+  if (state.metrics.anyOverextended) warnings.push('Over-extension detected (> 148°) — saddle may be too high.');
+  if (state.metrics.anyInvalid) warnings.push('Leg geometry unreachable at some crank positions — check measurements.');
+  if (warnings.length) {
+    warn.textContent = warnings.join(' ');
+    warn.classList.add('visible');
+  } else {
+    warn.classList.remove('visible');
+  }
+}
+
+// ── Recompute ──────────────────────────────────────────────────────────────
+function recompute() {
+  state.curveData = buildCurve();
+  state.metrics = extractMetrics(state.curveData);
+  updateChart(state.curveData);
+  updateMetrics();
+  renderDiagram();
+}
+
+// ── Animation ──────────────────────────────────────────────────────────────
+const btnPlay  = document.getElementById('btn-play');
+const scrubber = document.getElementById('scrubber');
+const crankLabel = document.getElementById('crank-label');
+
+function syncScrubber() {
+  scrubber.value = Math.round(state.crankAngle);
+  crankLabel.textContent = Math.round(state.crankAngle) + '°';
+}
+
+function frame(ts) {
+  if (!state.isPlaying) return;
+  if (state.lastTimestamp !== null) {
+    const dt = (ts - state.lastTimestamp) / 1000;
+    state.crankAngle = (state.crankAngle + state.speedDeg * dt) % 360;
+  }
+  state.lastTimestamp = ts;
+  syncScrubber();
+  renderDiagram();
+  updateMetrics();
+  chart.update('none');
+  state.animId = requestAnimationFrame(frame);
+}
+
+function play() {
+  if (state.isPlaying) return;
+  state.isPlaying = true;
+  state.lastTimestamp = null;
+  state.animId = requestAnimationFrame(frame);
+  btnPlay.textContent = '⏸ Pause';
+}
+
+function pause() {
+  state.isPlaying = false;
+  if (state.animId) cancelAnimationFrame(state.animId);
+  state.animId = null;
+  btnPlay.textContent = '▶ Play';
+}
+
+btnPlay.addEventListener('click', () => state.isPlaying ? pause() : play());
+
+scrubber.addEventListener('input', () => {
+  pause();
+  state.crankAngle = parseFloat(scrubber.value);
+  crankLabel.textContent = Math.round(state.crankAngle) + '°';
+  renderDiagram();
+  updateMetrics();
+  chart.update('none');
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  buildInputPanel();
+  initChart();
+  recompute();
+  syncScrubber();
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    chart.destroy();
+    initChart();
+    updateChart(state.curveData);
+    renderDiagram();
+  });
+
+  new ResizeObserver(() => {
+    renderDiagram();
+  }).observe(diagCanvas.parentElement);
+});
+</script>
