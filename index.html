@@ -76,7 +76,32 @@ main {
   flex-direction: column;
   gap: 12px;
 }
-#inputs-panel h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin-bottom: 4px; }
+#panel-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.tool-btn {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 0.78rem;
+  padding: 5px 0;
+  cursor: pointer;
+}
+.tool-btn:hover { background: var(--border); }
+#inputs-panel > h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin-bottom: 4px; }
+.input-section { display: flex; flex-direction: column; gap: 12px; }
+.input-section h2 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text2);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
 .input-group label {
   display: flex;
   justify-content: space-between;
@@ -215,7 +240,11 @@ input[type="number"]::-webkit-outer-spin-button { opacity: 0.4; }
 
 <main>
   <aside id="inputs-panel">
-    <h2>Parameters</h2>
+    <div id="panel-toolbar">
+      <button class="tool-btn" id="btn-save">&#8659; Save</button>
+      <button class="tool-btn" id="btn-load">&#8657; Load</button>
+      <input type="file" id="file-input" accept=".json" style="display:none">
+    </div>
   </aside>
 
   <section id="output-panel">
@@ -223,7 +252,7 @@ input[type="number"]::-webkit-outer-spin-button { opacity: 0.4; }
       <canvas id="diagram-canvas"></canvas>
       <div id="controls-row">
         <button id="btn-play">&#9654; Play</button>
-        <input type="range" id="scrubber" min="0" max="359" step="1" value="180">
+        <input type="range" id="scrubber" min="0" max="359" step="1" value="0">
         <span id="crank-label">180°</span>
       </div>
     </div>
@@ -258,32 +287,50 @@ input[type="number"]::-webkit-outer-spin-button { opacity: 0.4; }
 <script>
 // ── Parameter definitions ──────────────────────────────────────────────────
 const INPUT_DEFS = [
-  { key:'saddle_height',   label:'Saddle Height',          unit:'mm', min:400,  max:850,  step:5,   def:680   },
-  { key:'crank_length',    label:'Crank Length',           unit:'mm', min:155,  max:185,  step:2.5, def:172.5 },
-  { key:'upper_leg',       label:'Femur (hip–knee)',       unit:'mm', min:300,  max:600,  step:5,   def:420   },
-  { key:'lower_leg',       label:'Tibia (knee–ankle)',     unit:'mm', min:280,  max:550,  step:5,   def:410   },
-  { key:'seat_tube_angle', label:'Seat Tube Angle',        unit:'°',  min:68,   max:80,   step:0.5, def:73    },
-  { key:'foot_length',     label:'Foot Length',            unit:'mm', min:200,  max:320,  step:5,   def:265   },
-  { key:'cleat_from_heel', label:'Cleat from Heel',        unit:'mm', min:140,  max:260,  step:5,   def:190   },
-  { key:'ankle_angle',     label:'Ankle Angle (plantar+)', unit:'°',  min:-20,  max:30,   step:1,   def:10    },
+  { group:'bike', key:'saddle_height',   label:'Saddle Height',          unit:'mm', min:400,  max:850,  step:5,   def:680   },
+  { group:'bike', key:'crank_length',    label:'Crank Length',           unit:'mm', min:155,  max:185,  step:2.5, def:172.5 },
+  { group:'bike', key:'seat_tube_angle', label:'Seat Tube Angle',        unit:'°',  min:68,   max:80,   step:0.5, def:73    },
+  { group:'body', key:'upper_leg',       label:'Femur (hip–knee)',       unit:'mm', min:300,  max:600,  step:5,   def:420   },
+  { group:'body', key:'lower_leg',       label:'Tibia (knee–ankle)',     unit:'mm', min:280,  max:550,  step:5,   def:410   },
+  { group:'body', key:'foot_length',     label:'Foot Length',            unit:'mm', min:200,  max:320,  step:5,   def:265   },
+  { group:'body', key:'cleat_from_heel', label:'Cleat from Heel',        unit:'mm', min:140,  max:260,  step:5,   def:190   },
+  { group:'body', key:'ankle_angle',     label:'Ankle Angle (plantar+)', unit:'°',  min:-20,  max:30,   step:1,   def:10    },
 ];
 
 const params = {};
 INPUT_DEFS.forEach(d => { params[d.key] = d.def; });
 
 // ── Build input panel ──────────────────────────────────────────────────────
+function makeInputGroup(d, panel) {
+  const grp = document.createElement('div');
+  grp.className = 'input-group';
+  grp.innerHTML = `
+    <label for="num-${d.key}">${d.label} <em>${d.unit}</em></label>
+    <div class="dual-input">
+      <input type="range"  id="rng-${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.def}">
+      <input type="number" id="num-${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.def}">
+    </div>`;
+  panel.appendChild(grp);
+}
+
+function makeSection(panel, title) {
+  const sec = document.createElement('div');
+  sec.className = 'input-section';
+  const hdr = document.createElement('h2');
+  hdr.textContent = title;
+  sec.appendChild(hdr);
+  panel.appendChild(sec);
+  return sec;
+}
+
 function buildInputPanel() {
   const panel = document.getElementById('inputs-panel');
+  const bikeSection = makeSection(panel, 'Bike');
+  const bodySection = makeSection(panel, 'Body');
+
   INPUT_DEFS.forEach(d => {
-    const grp = document.createElement('div');
-    grp.className = 'input-group';
-    grp.innerHTML = `
-      <label for="num-${d.key}">${d.label} <em>${d.unit}</em></label>
-      <div class="dual-input">
-        <input type="range"  id="rng-${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.def}">
-        <input type="number" id="num-${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.def}">
-      </div>`;
-    panel.appendChild(grp);
+    const target = d.group === 'bike' ? bikeSection : bodySection;
+    makeInputGroup(d, target);
 
     const rng = document.getElementById(`rng-${d.key}`);
     const num = document.getElementById(`num-${d.key}`);
@@ -389,7 +436,7 @@ function extractMetrics(curve) {
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  crankAngle: 180,
+  crankAngle: 0,
   isPlaying: false,
   lastTimestamp: null,
   animId: null,
@@ -833,9 +880,49 @@ scrubber.addEventListener('input', () => {
   chart.update('none');
 });
 
+// ── Save / Load ────────────────────────────────────────────────────────────
+function saveParams() {
+  const blob = new Blob([JSON.stringify(params, null, 2)], {type: 'application/json'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'saddle-fit.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function applyLoadedParams(data) {
+  INPUT_DEFS.forEach(d => {
+    if (data[d.key] === undefined) return;
+    const v = Math.min(d.max, Math.max(d.min, parseFloat(data[d.key])));
+    params[d.key] = v;
+    document.getElementById(`rng-${d.key}`).value = v;
+    document.getElementById(`num-${d.key}`).value = v;
+  });
+  recompute();
+}
+
+function loadParams(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      applyLoadedParams(JSON.parse(e.target.result));
+    } catch {
+      alert('Invalid file — expected a JSON params file.');
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   buildInputPanel();
+
+  document.getElementById('btn-save').addEventListener('click', saveParams);
+  const fileInput = document.getElementById('file-input');
+  document.getElementById('btn-load').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) loadParams(e.target.files[0]); e.target.value = ''; });
+
   initChart();
   recompute();
   syncScrubber();
