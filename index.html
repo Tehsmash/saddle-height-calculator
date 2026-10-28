@@ -422,6 +422,7 @@ const BODY_DEFS = [
   { key:'foot_length',     label:'Foot Length',            unit:'mm', min:200, max:320, step:5,  def:265 },
   { key:'cleat_from_heel', label:'Cleat from Heel',        unit:'mm', min:140, max:260, step:5,  def:190 },
   { key:'ankle_angle',     label:'Ankle Angle (plantar+)', unit:'°',  min:-20, max:30,  step:1,  def:10  },
+  { key:'ankle_height',   label:'Ankle Height (sole→joint)', unit:'mm', min:50, max:120, step:5,  def:75  },
 ];
 
 // params flat object — body params stored as key_R and key_L
@@ -587,10 +588,14 @@ function pedalPos(theta) {
 }
 
 function anklePos(pedal, side) {
-  const ankleFromHeel = 0.22 * params[`foot_length_${side}`];
-  const D = params[`cleat_from_heel_${side}`] - ankleFromHeel;
-  const aa = toRad(params[`ankle_angle_${side}`]);
-  return { x: pedal.x - D * Math.cos(aa), y: pedal.y + D * Math.sin(aa) };
+  const along = params[`cleat_from_heel_${side}`] - 0.22 * params[`foot_length_${side}`];
+  const ah    = params[`ankle_height_${side}`];
+  const aa    = toRad(params[`ankle_angle_${side}`]);
+  // foot_dir = (cos aa, -sin aa) heel→toe; foot_normal = (sin aa, cos aa) sole→top
+  return {
+    x: pedal.x - along * Math.cos(aa) + ah * Math.sin(aa),
+    y: pedal.y + along * Math.sin(aa) + ah * Math.cos(aa),
+  };
 }
 
 function computeKnee(hip, ankle, side) {
@@ -708,11 +713,17 @@ function renderSide(canvas, side, crankAngle) {
   const ankle = anklePos(pedal, side);
   const result= computeKnee(hip, ankle, side);
 
-  const aa  = toRad(params[`ankle_angle_${side}`]);
-  const cfh = params[`cleat_from_heel_${side}`];
-  const rem = params[`foot_length_${side}`] - cfh;
+  const aa   = toRad(params[`ankle_angle_${side}`]);
+  const cfh  = params[`cleat_from_heel_${side}`];
+  const rem  = params[`foot_length_${side}`] - cfh;
   const heel = { x: pedal.x - cfh * Math.cos(aa), y: pedal.y + cfh * Math.sin(aa) };
   const toe  = { x: pedal.x + rem * Math.cos(aa), y: pedal.y - rem * Math.sin(aa) };
+  // foot-sole point directly below ankle joint (along foot axis from pedal by along_dist)
+  const along = params[`cleat_from_heel_${side}`] - 0.22 * params[`foot_length_${side}`];
+  const soleUnderAnkle = {
+    x: pedal.x - along * Math.cos(aa),
+    y: pedal.y + along * Math.sin(aa),
+  };
 
   ctx.save();
   ctx.translate(ox, oy);
@@ -744,6 +755,17 @@ function renderSide(canvas, side, crankAngle) {
   // Foot
   ctx.beginPath(); ctx.moveTo(heel.x,heel.y); ctx.lineTo(toe.x,toe.y);
   ctx.strokeStyle=getCssVar('--text2'); ctx.lineWidth=lw(4); ctx.lineCap='round'; ctx.stroke();
+
+  // Ankle height indicator: dashed line from sole up to ankle joint
+  ctx.beginPath(); ctx.moveTo(soleUnderAnkle.x,soleUnderAnkle.y); ctx.lineTo(ankle.x,ankle.y);
+  ctx.setLineDash([4/sc,3/sc]); ctx.strokeStyle=getCssVar('--tibia'); ctx.lineWidth=lw(2); ctx.stroke();
+  ctx.setLineDash([]);
+  // tick mark at sole end — along foot_dir (cos aa, -sin aa), perpendicular to the height line
+  const tickLen = lw(5);
+  ctx.beginPath();
+  ctx.moveTo(soleUnderAnkle.x - tickLen*Math.cos(aa), soleUnderAnkle.y + tickLen*Math.sin(aa));
+  ctx.lineTo(soleUnderAnkle.x + tickLen*Math.cos(aa), soleUnderAnkle.y - tickLen*Math.sin(aa));
+  ctx.strokeStyle=getCssVar('--tibia'); ctx.lineWidth=lw(1.5); ctx.stroke();
 
   if (result.valid) {
     const knee = result.knee;
